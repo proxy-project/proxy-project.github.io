@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<meta name="color-scheme" content="light dark">
+<meta name="bank-return-relay" content="1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>Back to Spending</title>
+<style>
+  :root { --bg: #f4f5f7; --card: #fff; --text: #14171c; --muted: #5b6270; --btn: #14171c; --btn-text: #fff; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0d0f13; --card: #171a20; --text: #eef0f3; --muted: #9aa1ad; --btn: #eef0f3; --btn-text: #0d0f13; }
+  }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: var(--bg); color: var(--text);
+    font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 420px; margin: 24px 16px; padding: 28px 24px; background: var(--card); border-radius: 18px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, .08); text-align: center; }
+  h1 { font-size: 21px; margin: 0 0 8px; }
+  p { margin: 0 0 18px; color: var(--muted); }
+  a { display: inline-block; padding: 11px 20px; border-radius: 12px; background: var(--btn); color: var(--btn-text);
+    text-decoration: none; font-weight: 600; }
+  .spin { width: 28px; height: 28px; margin: 0 auto 14px; border-radius: 50%; border: 3px solid var(--muted);
+    border-top-color: transparent; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+  <div class="spin" id="spin" aria-hidden="true"></div>
+  <h1 id="title">Taking you back to the app</h1>
+  <p id="text">One moment.</p>
+  <a id="go" href="#" hidden>Open the app</a>
+</main>
+<script>
+  // Enable Banking only redirects to https addresses, so the bank approval
+  // lands here. The Spending app runs over plain http on the home network:
+  // this page passes the answer on to the app address the app put in the
+  // state value, after the last dot. Only private network addresses are
+  // accepted, and only the approval fields are passed on.
+  (function () {
+    var q = new URLSearchParams(location.search);
+    var state = q.get('state') || '';
+    var title = document.getElementById('title');
+    var text = document.getElementById('text');
+    var go = document.getElementById('go');
+    var spin = document.getElementById('spin');
+
+    function isPrivate(host) {
+      host = host.toLowerCase().replace(/^\[|\]$/g, '');
+      if (host === 'localhost' || host === '::1' || /\.(localhost|local|lan|internal|home\.arpa)$/.test(host)) return true;
+      var m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(host);
+      if (!m) return false;
+      var a = Number(m[1]), b = Number(m[2]);
+      return a === 10 || a === 127 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
+    }
+
+    function appOrigin() {
+      var dot = state.lastIndexOf('.');
+      if (dot < 0) return null;
+      try {
+        var b64 = state.slice(dot + 1).replace(/-/g, '+').replace(/_/g, '/');
+        var url = new URL(atob(b64 + '==='.slice((b64.length + 3) % 4)));
+        if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
+        return isPrivate(url.hostname) ? url.origin : null;
+      } catch (e) {
+        return null;
+      }
+    }
+
+    var origin = appOrigin();
+    if (!origin) {
+      spin.hidden = true;
+      title.textContent = 'Nothing to pass on';
+      text.textContent = 'This page sends you back to the Spending app after you approve access in your bank. Open the app and start the connection from there.';
+      return;
+    }
+    var out = new URLSearchParams();
+    ['code', 'state', 'error', 'error_description'].forEach(function (k) {
+      if (q.has(k)) out.set(k, q.get(k));
+    });
+    var next = origin + '/callback?' + out.toString();
+    go.href = next;
+    text.textContent = 'Going back to the app at ' + new URL(origin).host + '.';
+    location.replace(next);
+    // Still here after a few seconds: the browser blocked or delayed the jump.
+    setTimeout(function () {
+      spin.hidden = true;
+      text.textContent = 'If the app does not open, check that this device is on the same Wi-Fi as the computer running it, then tap the button.';
+      go.hidden = false;
+    }, 4000);
+  })();
+</script>
+</body>
+</html>
